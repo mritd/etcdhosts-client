@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ type HostsClient struct {
 type VHosts struct {
 	Version  int64
 	Revision int64
-	Hosts    string
+	HostFile *HostFile
 }
 
 type VHostsList []VHosts
@@ -116,22 +117,22 @@ func NewClient(ca, cert, key string, endpoints []string, hostKey string) (*Hosts
 	}, nil
 }
 
-func (hc *HostsClient) PutHosts(hosts string) error {
+func (hc *HostsClient) PutHosts(hostFile *HostFile) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	_, err := hc.cli.Put(ctx, hc.hostKey, hosts)
+	_, err := hc.cli.Put(ctx, hc.hostKey, string(hostFile.Format(runtime.GOOS)))
 	if err != nil {
 		return fmt.Errorf("[etcd/client/put] push hosts failed, key %s: %w", hc.hostKey, err)
 	}
 	return nil
 }
 
-func (hc *HostsClient) GetHosts() (string, error) {
+func (hc *HostsClient) GetHosts() (*HostFile, error) {
 	return hc.GetHostsWithRevision(-1)
 }
 
-func (hc *HostsClient) GetHostsWithRevision(revision int64) (string, error) {
+func (hc *HostsClient) GetHostsWithRevision(revision int64) (*HostFile, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -144,18 +145,18 @@ func (hc *HostsClient) GetHostsWithRevision(revision int64) (string, error) {
 	}
 
 	if err != nil {
-		return "", fmt.Errorf("[etcd/client/get] get hosts failed, key %s: %w", hc.hostKey, err)
+		return nil, fmt.Errorf("[etcd/client/get] get hosts failed, key %s: %w", hc.hostKey, err)
 	}
 
 	if len(resp.Kvs) == 0 {
-		return "", fmt.Errorf("[etcd/client/get] etcd hosts not exist, key: %s", hc.hostKey)
+		return nil, fmt.Errorf("[etcd/client/get] etcd hosts not exist, key: %s", hc.hostKey)
 	}
 
 	if len(resp.Kvs) > 1 {
-		return "", fmt.Errorf("[etcd/client/get] too many etcd hosts, key: %s", hc.hostKey)
+		return nil, fmt.Errorf("[etcd/client/get] too many etcd hosts, key: %s", hc.hostKey)
 	}
 
-	return string(resp.Kvs[0].Value), nil
+	return NewHostFile(resp.Kvs[0].Value)
 }
 
 func (hc *HostsClient) GetHostsHistory() (VHostsList, error) {
@@ -176,13 +177,21 @@ func (hc *HostsClient) GetHostsHistory() (VHostsList, error) {
 		if err != nil {
 			break
 		}
+		hostFile, err := NewHostFile(resp.Kvs[0].Value)
+		if err != nil {
+			break
+		}
 		vl = append(vl, VHosts{
 			Version:  resp.Kvs[0].Version,
 			Revision: i,
-			Hosts:    string(resp.Kvs[0].Value),
+			HostFile: hostFile,
 		})
 		cancel()
 	}
 	sort.Sort(vl)
 	return vl, nil
+}
+
+func (hc *HostsClient) Watch() clientv3.WatchChan {
+	return hc.cli.Watch(context.Background(), hc.hostKey)
 }
