@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const defaultOSX = `
+const DefaultOSX = `
 ##
 # Host Database
 #
@@ -19,7 +19,7 @@ const defaultOSX = `
 fe80::1%lo0     localhost
 `
 
-const defaultLinux = `
+const DefaultLinux = `
 127.0.0.1   localhost
 127.0.1.1   HOSTNAME
 
