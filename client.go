@@ -175,10 +175,12 @@ func (hc *HostsClient) GetHostsHistory() (VHostsList, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		resp, err := hc.cli.Get(ctx, hc.hostKey, clientv3.WithRev(i))
 		if err != nil {
+			cancel()
 			break
 		}
 		hostFile, err := NewHostFile(resp.Kvs[0].Value)
 		if err != nil {
+			cancel()
 			break
 		}
 		vl = append(vl, VHosts{
